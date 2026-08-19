@@ -19,7 +19,7 @@ for (p in c("DatabaseConnector", "SqlRender", "dplyr", "readr")) {
 }
 
 # ===========================================================================
-# CONFIG  [EDIT HERE]
+# CONFIG  [EDIT HERE]  —  or use a gitignored site_config.R (see below)
 # ===========================================================================
 
 # --- Database connection ----------------------------------------------------
@@ -32,6 +32,13 @@ settings <- list(
   minCellCount      = 5L,
   outputFolder      = file.path("results")
 )
+
+# --- Optional: source a gitignored site_config.R for credentials/schemas ----
+# This keeps site-specific connection details out of version control.
+# Copy site_config_template.R to site_config.R and fill in your values.
+# It should define connectionDetails, settings, and any platform-specific
+# options (e.g. sqlRenderTempEmulationSchema for BigQuery).
+if (file.exists("site_config.R")) source("site_config.R")
 
 # ===========================================================================
 # Run  —  do not edit below
