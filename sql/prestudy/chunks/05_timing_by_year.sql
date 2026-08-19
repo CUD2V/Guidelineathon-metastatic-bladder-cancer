@@ -36,7 +36,7 @@ FROM (
         JOIN #patient_char pc    ON p.person_id = pc.person_id
         LEFT JOIN #met_summary ms ON p.person_id = ms.person_id
     ) y
-    GROUP BY index_year_int, from_event, to_event
+    GROUP BY CAST(index_year_int AS VARCHAR(4)), CAST(from_event AS VARCHAR(10)), CAST(to_event AS VARCHAR(10))
 
     UNION ALL
 
@@ -59,7 +59,7 @@ FROM (
         JOIN #patient_char pc    ON p.person_id = pc.person_id
         LEFT JOIN #met_summary ms ON p.person_id = ms.person_id
     ) y
-    GROUP BY index_year_int, from_event, to_event
+    GROUP BY CAST(index_year_int AS VARCHAR(4)), CAST(from_event AS VARCHAR(10)), CAST(to_event AS VARCHAR(10))
 ) x
 ORDER BY
     x.timing_type,
