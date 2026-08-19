@@ -1,20 +1,26 @@
 -- 1) Population prevalence
+-- BigQuery compat: GROUPING SETS rewritten as UNION ALL of overall + per-year.
 WITH base AS (
     SELECT
-        CASE
-            WHEN GROUPING(YEAR(index_date)) = 1 THEN 'OVERALL'
-            ELSE CAST(YEAR(index_date) AS VARCHAR(4))
-        END AS prevalence_year,
+        'OVERALL' AS prevalence_year,
         COUNT(*) AS n_patients,
         SUM(CASE WHEN first_other_dx_date IS NOT NULL THEN 1 ELSE 0 END) AS n_with_other_dx,
         SUM(CASE WHEN first_gen_cancer_date IS NOT NULL THEN 1 ELSE 0 END) AS n_with_gen_cancer_dx,
         SUM(CASE WHEN first_met_date IS NOT NULL THEN 1 ELSE 0 END) AS n_with_met,
         SUM(CASE WHEN first_l01_date IS NOT NULL THEN 1 ELSE 0 END) AS n_with_l01
     FROM #patient_char
-    GROUP BY GROUPING SETS (
-        (),
-        (YEAR(index_date))
-    )
+
+    UNION ALL
+
+    SELECT
+        CAST(YEAR(index_date) AS VARCHAR(4)) AS prevalence_year,
+        COUNT(*) AS n_patients,
+        SUM(CASE WHEN first_other_dx_date IS NOT NULL THEN 1 ELSE 0 END) AS n_with_other_dx,
+        SUM(CASE WHEN first_gen_cancer_date IS NOT NULL THEN 1 ELSE 0 END) AS n_with_gen_cancer_dx,
+        SUM(CASE WHEN first_met_date IS NOT NULL THEN 1 ELSE 0 END) AS n_with_met,
+        SUM(CASE WHEN first_l01_date IS NOT NULL THEN 1 ELSE 0 END) AS n_with_l01
+    FROM #patient_char
+    GROUP BY YEAR(index_date)
 )
 SELECT
     prevalence_year,

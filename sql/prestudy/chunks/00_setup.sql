@@ -1750,12 +1750,11 @@ CREATE TABLE #death_stratum_counts (
     n_deaths_out_obs INT
 );
 
+-- BigQuery compat: GROUPING SETS rewritten as two queries (BQ is strict about
+-- column references inside aggregates when not grouped in all sets).
 INSERT INTO #death_stratum_counts (prevalence_year, anchor_event, n_patients, n_deaths, n_deaths_in_obs, n_deaths_out_obs)
 SELECT
-    CASE
-        WHEN GROUPING(YEAR(c.index_date)) = 1 THEN 'OVERALL'
-        ELSE CAST(YEAR(c.index_date) AS VARCHAR(4))
-    END,
+    'OVERALL',
     'INDEX',
     COUNT(*),
     SUM(CASE WHEN dos.death_date IS NOT NULL AND dos.death_date >= c.index_date THEN 1 ELSE 0 END),
@@ -1763,15 +1762,25 @@ SELECT
     SUM(CASE WHEN dos.death_date IS NOT NULL AND dos.death_date >= c.index_date AND dos.death_in_obs = 0 THEN 1 ELSE 0 END)
 FROM #cohort c
 LEFT JOIN #death_obs_status dos ON dos.person_id = c.person_id
-GROUP BY GROUPING SETS ((), (YEAR(c.index_date)))
 ;
 
 INSERT INTO #death_stratum_counts (prevalence_year, anchor_event, n_patients, n_deaths, n_deaths_in_obs, n_deaths_out_obs)
 SELECT
-    CASE
-        WHEN GROUPING(YEAR(ms.first_met_date)) = 1 THEN 'OVERALL'
-        ELSE CAST(YEAR(ms.first_met_date) AS VARCHAR(4))
-    END,
+    CAST(YEAR(c.index_date) AS VARCHAR(4)),
+    'INDEX',
+    COUNT(*),
+    SUM(CASE WHEN dos.death_date IS NOT NULL AND dos.death_date >= c.index_date THEN 1 ELSE 0 END),
+    SUM(CASE WHEN dos.death_date IS NOT NULL AND dos.death_date >= c.index_date AND dos.death_in_obs = 1 THEN 1 ELSE 0 END),
+    SUM(CASE WHEN dos.death_date IS NOT NULL AND dos.death_date >= c.index_date AND dos.death_in_obs = 0 THEN 1 ELSE 0 END)
+FROM #cohort c
+LEFT JOIN #death_obs_status dos ON dos.person_id = c.person_id
+GROUP BY YEAR(c.index_date)
+;
+
+-- BigQuery compat: GROUPING SETS rewritten as two queries.
+INSERT INTO #death_stratum_counts (prevalence_year, anchor_event, n_patients, n_deaths, n_deaths_in_obs, n_deaths_out_obs)
+SELECT
+    'OVERALL',
     'FIRST_MET',
     COUNT(*),
     SUM(CASE WHEN dos.death_date IS NOT NULL AND dos.death_date >= ms.first_met_date THEN 1 ELSE 0 END),
@@ -1780,7 +1789,20 @@ SELECT
 FROM #cohort c
 INNER JOIN #met_summary ms ON c.person_id = ms.person_id AND ms.first_met_date IS NOT NULL
 LEFT JOIN #death_obs_status dos ON dos.person_id = c.person_id
-GROUP BY GROUPING SETS ((), (YEAR(ms.first_met_date)))
+;
+
+INSERT INTO #death_stratum_counts (prevalence_year, anchor_event, n_patients, n_deaths, n_deaths_in_obs, n_deaths_out_obs)
+SELECT
+    CAST(YEAR(ms.first_met_date) AS VARCHAR(4)),
+    'FIRST_MET',
+    COUNT(*),
+    SUM(CASE WHEN dos.death_date IS NOT NULL AND dos.death_date >= ms.first_met_date THEN 1 ELSE 0 END),
+    SUM(CASE WHEN dos.death_date IS NOT NULL AND dos.death_date >= ms.first_met_date AND dos.death_in_obs = 1 THEN 1 ELSE 0 END),
+    SUM(CASE WHEN dos.death_date IS NOT NULL AND dos.death_date >= ms.first_met_date AND dos.death_in_obs = 0 THEN 1 ELSE 0 END)
+FROM #cohort c
+INNER JOIN #met_summary ms ON c.person_id = ms.person_id AND ms.first_met_date IS NOT NULL
+LEFT JOIN #death_obs_status dos ON dos.person_id = c.person_id
+GROUP BY YEAR(ms.first_met_date)
 ;
 
 DROP TABLE IF EXISTS #death_timing_long;
