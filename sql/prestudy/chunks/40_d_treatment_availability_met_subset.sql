@@ -39,10 +39,19 @@
 --     Source: #met_summary, #l01_events (00_setup.sql), #dtp_concepts (00_setup.sql),
 --     @cdm_database_schema.procedure_occurrence.
 
+-- BigQuery compat: IN subquery not allowed inside JOIN predicate; pre-filter
+-- DTP procedures into a CTE (dtp_procedures) instead.
 WITH met_subset AS (
     -- Metastasis subset: one row per cohort patient with a MET, plus first_met_date.
     SELECT person_id, first_met_date
     FROM #met_summary
+),
+dtp_procedures AS (
+    -- Pre-filtered procedure_occurrence rows matching DTP concepts.
+    SELECT po.person_id, po.procedure_date
+    FROM @cdm_database_schema.procedure_occurrence po
+    INNER JOIN #dtp_concepts dc ON po.procedure_concept_id = dc.concept_id
+    WHERE po.person_id IN (SELECT person_id FROM met_subset)
 ),
 l01_flags AS (
     -- Per subset patient: any L01 ever, any L01 on/after first MET.
@@ -61,9 +70,8 @@ dtp_flags AS (
         MAX(CASE WHEN po.person_id IS NOT NULL THEN 1 ELSE 0 END)                                AS has_dtp_ever,
         MAX(CASE WHEN po.procedure_date >= ms.first_met_date THEN 1 ELSE 0 END)                  AS has_dtp_oaf
     FROM met_subset ms
-    LEFT JOIN @cdm_database_schema.procedure_occurrence po
+    LEFT JOIN dtp_procedures po
       ON po.person_id = ms.person_id
-     AND po.procedure_concept_id IN (SELECT concept_id FROM #dtp_concepts)
     GROUP BY ms.person_id
 ),
 patient_flags AS (
