@@ -109,6 +109,43 @@ decedent_days_ranked AS (
     FROM decedent_anchor
     WHERE days_past_death IS NOT NULL
 ),
+-- BigQuery compat: pre-compute each GROUP BY metric as a separate CTE so the
+-- final UNION ALL (metrics) has no GROUP BY in any branch. This avoids SqlRender
+-- ordinal replacement bug (OHDSI/SqlRender#249).
+metric_multi_period AS (
+    SELECT
+        anchor_event,
+        'PATIENTS_WITH_MULTIPLE_OBS_PERIODS' AS metric,
+        '' AS stratum,
+        SUM(CASE WHEN n_periods > 1 THEN 1 ELSE 0 END) AS n_numerator,
+        COUNT(*) AS n_denominator,
+        CAST(NULL AS FLOAT) AS median_days
+    FROM anchor_cohort
+    GROUP BY anchor_event
+),
+metric_period_after_death AS (
+    SELECT
+        anchor_event,
+        'DECEDENTS_PERIOD_ENDS_AFTER_DEATH' AS metric,
+        '' AS stratum,
+        SUM(period_ends_after_death) AS n_numerator,
+        COUNT(*) AS n_denominator,
+        CAST(NULL AS FLOAT) AS median_days
+    FROM decedent_anchor
+    GROUP BY anchor_event
+),
+metric_median_past_death AS (
+    SELECT
+        anchor_event,
+        'MEDIAN_DAYS_PERIOD_ENDS_PAST_DEATH' AS metric,
+        '' AS stratum,
+        CAST(NULL AS INT) AS n_numerator,
+        MAX(non_null_cnt) AS n_denominator,
+        MIN(CASE WHEN 2.0 * rn >= non_null_cnt
+                 THEN CAST(days_past_death AS FLOAT) END) AS median_days
+    FROM decedent_days_ranked
+    GROUP BY anchor_event
+),
 metrics AS (
     -- (1) period definition: period_type distribution (site-level)
     SELECT
@@ -123,15 +160,8 @@ metrics AS (
 
     UNION ALL
     -- (2) patients with more than one observation period (a gap)
-    SELECT
-        anchor_event,
-        'PATIENTS_WITH_MULTIPLE_OBS_PERIODS',
-        '',
-        SUM(CASE WHEN n_periods > 1 THEN 1 ELSE 0 END),
-        COUNT(*),
-        CAST(NULL AS FLOAT)
-    FROM anchor_cohort
-    GROUP BY anchor_event
+    SELECT anchor_event, metric, stratum, n_numerator, n_denominator, median_days
+    FROM metric_multi_period
 
     UNION ALL
     -- (3) deaths recorded outside any observation period
@@ -147,28 +177,13 @@ metrics AS (
 
     UNION ALL
     -- (4) decedents whose observation period ends after the death date
-    SELECT
-        anchor_event,
-        'DECEDENTS_PERIOD_ENDS_AFTER_DEATH',
-        '',
-        SUM(period_ends_after_death),
-        COUNT(*),
-        CAST(NULL AS FLOAT)
-    FROM decedent_anchor
-    GROUP BY anchor_event
+    SELECT anchor_event, metric, stratum, n_numerator, n_denominator, median_days
+    FROM metric_period_after_death
 
     UNION ALL
     -- (5) median days the period runs past death, among those decedents
-    SELECT
-        anchor_event,
-        'MEDIAN_DAYS_PERIOD_ENDS_PAST_DEATH',
-        '',
-        CAST(NULL AS INT),
-        MAX(non_null_cnt),
-        MIN(CASE WHEN 2.0 * rn >= non_null_cnt
-                 THEN CAST(days_past_death AS FLOAT) END)
-    FROM decedent_days_ranked
-    GROUP BY anchor_event
+    SELECT anchor_event, metric, stratum, n_numerator, n_denominator, median_days
+    FROM metric_median_past_death
 )
 SELECT
     anchor_event,
