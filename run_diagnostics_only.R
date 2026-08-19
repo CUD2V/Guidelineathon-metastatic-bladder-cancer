@@ -64,8 +64,14 @@ source("R/helpers.R")
 connection <- DatabaseConnector::connect(connectionDetails)
 .checkDbiPostgresBug(connection)
 
+# Set skipSetup = TRUE to reuse temp tables from a previous successful setup.
+# Set startFrom to a chunk filename to resume (e.g. "03_directionality_buckets.sql").
+skipSetup <- FALSE
+startFrom <- NULL
+
 message("\n=== Diagnostics: pre-study characterization queries ===")
-runPreStudyDiagnostics(connection, settings)
+runPreStudyDiagnostics(connection, settings, skipSetup = skipSetup,
+                       startFrom = startFrom)
 
 utils::zip(zipfile = file.path(settings$outputFolder, "diagnostics.zip"), files = list.files(file.path(settings$outputFolder, "diagnostics"), recursive = TRUE, full.names = TRUE, include.dirs = TRUE, all.files = TRUE), flags = "-q")
 
