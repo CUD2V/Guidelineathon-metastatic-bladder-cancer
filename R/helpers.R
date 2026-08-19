@@ -112,51 +112,97 @@ querySqlFile <- function(connection, file, ...) {
 # --- BigQuery workaround: split INSERT...UNION ALL into separate INSERTs ---
 # SqlRender's BigQuery translator incorrectly replaces column references with
 # ordinal integers in 2nd+ branches of a UNION ALL (OHDSI/SqlRender#249).
-# Workaround: split each INSERT INTO ... SELECT ... UNION ALL SELECT ... into
-# separate INSERT INTO ... SELECT ... statements before translation.
+# Workaround: find each INSERT INTO ... (...) SELECT ... UNION ALL SELECT ...
+# in the raw SQL and replace with separate INSERT statements. This operates
+# directly on the SQL string — no split/reassemble — so all original
+# semicolons, comments, and formatting are preserved.
 # Only activated when targetDialect is "bigquery"; other dialects skip this.
 .splitInsertUnionAll <- function(sql) {
-  stmts <- SqlRender::splitSql(sql)
-  out <- character(length(stmts))
+  insert_re <- "INSERT\\s+INTO\\s+\\S+\\s*\\([^)]+\\)"
+  m <- gregexpr(insert_re, sql, ignore.case = TRUE, perl = TRUE)[[1]]
+  if (m[1] == -1L) return(sql)
 
-  for (i in seq_along(stmts)) {
-    stmt <- trimws(stmts[i])
-    if (!nzchar(stmt) ||
-        !grepl("\\bINSERT\\s+INTO\\b", stmt, ignore.case = TRUE, perl = TRUE) ||
-        !grepl("\\bUNION\\s+ALL\\b", stmt, ignore.case = TRUE, perl = TRUE)) {
-      out[i] <- stmt
-      next
-    }
+  starts <- as.integer(m)
+  lengths <- attr(m, "match.length")
 
-    # Extract the INSERT INTO #table (col1, col2, ...) prefix
-    m <- regexpr(
-      "INSERT\\s+INTO\\s+\\S+\\s*\\([^)]+\\)",
-      stmt, ignore.case = TRUE, perl = TRUE
-    )
-    if (m == -1L) {
-      out[i] <- stmt
-      next
-    }
-    prefix <- regmatches(stmt, m)
-    body <- trimws(substring(stmt, m + attr(m, "match.length")))
+  # Process in reverse order to preserve character positions
+  for (k in rev(seq_along(starts))) {
+    prefix <- substr(sql, starts[k], starts[k] + lengths[k] - 1L)
+    body_start <- starts[k] + lengths[k]
+
+    # Find the statement-ending ; at depth 0 (skipping comments/strings)
+    stmt_end <- .findStmtEnd(sql, body_start)
+    body <- substr(sql, body_start, stmt_end - 1L)
+
+    if (!grepl("\\bUNION\\s+ALL\\b", body, ignore.case = TRUE, perl = TRUE)) next
 
     # Split body on top-level UNION ALL (not inside parentheses)
     branches <- .splitTopLevelUnionAll(body)
-    if (length(branches) <= 1L) {
-      out[i] <- stmt
-      next
-    }
+    if (length(branches) <= 1L) next
 
     # Rebuild as separate INSERT statements
     parts <- vapply(branches, function(b) {
       b <- trimws(b)
-      b <- sub(";\\s*$", "", b)
-      if (nzchar(b)) paste0(prefix, "\n", b, ";") else ""
+      if (nzchar(b)) paste0(prefix, "\n", b) else ""
     }, character(1))
-    out[i] <- paste(parts[nzchar(parts)], collapse = "\n")
+    parts <- parts[nzchar(parts)]
+    if (length(parts) == 0L) next
+
+    replacement <- paste(parts, collapse = ";\n")
+
+    # Splice into the SQL string (preserves the original ; at stmt_end)
+    before <- if (starts[k] > 1L) substr(sql, 1L, starts[k] - 1L) else ""
+    after <- substr(sql, stmt_end, nchar(sql))
+    sql <- paste0(before, replacement, after)
   }
 
-  paste(out[nzchar(out)], collapse = "\n;\n")
+  sql
+}
+
+# Find the position of the statement-ending ; at parenthesis depth 0,
+# correctly skipping line comments (--), block comments (/* */), and
+# single-quoted strings.
+.findStmtEnd <- function(sql, start) {
+  chars <- strsplit(sql, "")[[1]]
+  n <- length(chars)
+  depth <- 0L
+  i <- as.integer(start)
+
+  while (i <= n) {
+    ch <- chars[i]
+    # Line comment: skip to newline
+    if (ch == "-" && i < n && chars[i + 1L] == "-") {
+      while (i <= n && chars[i] != "\n") i <- i + 1L
+      next
+    }
+    # Block comment: skip to */
+    if (ch == "/" && i < n && chars[i + 1L] == "*") {
+      i <- i + 2L
+      while (i < n && !(chars[i] == "*" && chars[i + 1L] == "/")) i <- i + 1L
+      i <- i + 2L
+      next
+    }
+    # Single-quoted string: skip to closing quote
+    if (ch == "'") {
+      i <- i + 1L
+      while (i <= n) {
+        if (chars[i] == "'" && i < n && chars[i + 1L] == "'") {
+          i <- i + 2L
+        } else if (chars[i] == "'") {
+          i <- i + 1L
+          break
+        } else {
+          i <- i + 1L
+        }
+      }
+      next
+    }
+    if (ch == "(") depth <- depth + 1L
+    else if (ch == ")") depth <- depth - 1L
+    else if (depth == 0L && ch == ";") return(i)
+    i <- i + 1L
+  }
+  n + 1L
 }
 
 # Split SQL text on UNION ALL that appears at parenthesis depth 0.
