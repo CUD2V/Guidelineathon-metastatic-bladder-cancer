@@ -1951,6 +1951,8 @@ CREATE TABLE #l01_consecutive_gaps (
     gap_days   INT
 );
 
+-- BigQuery compat: split CTE+INSERT...UNION ALL into two INSERTs so each
+-- carries its own CTE (our UNION ALL splitter can't propagate CTEs).
 WITH ranked AS (
     SELECT
         e.person_id,
@@ -1967,7 +1969,23 @@ gaps AS (
 )
 INSERT INTO #l01_consecutive_gaps (person_id, subgroup, gap_days)
 SELECT g.person_id, 'ALL_L01', g.gap_days FROM gaps g
-UNION ALL
+;
+
+WITH ranked AS (
+    SELECT
+        e.person_id,
+        e.event_day,
+        LEAD(e.event_day) OVER (PARTITION BY e.person_id ORDER BY e.event_day) AS next_day
+    FROM #l01_event_days e
+),
+gaps AS (
+    SELECT
+        person_id,
+        DATEDIFF(DAY, event_day, next_day) AS gap_days
+    FROM ranked
+    WHERE next_day IS NOT NULL
+)
+INSERT INTO #l01_consecutive_gaps (person_id, subgroup, gap_days)
 SELECT g.person_id, 'MET_L01', g.gap_days
 FROM gaps g
 JOIN #met_summary ms ON g.person_id = ms.person_id AND ms.first_met_date IS NOT NULL
