@@ -14,13 +14,15 @@ SELECT
     CASE WHEN x.n_patients_with_pair <= @min_cell_count THEN NULL ELSE x.p25_days  END AS p25_days,
     CASE WHEN x.n_patients_with_pair <= @min_cell_count THEN NULL ELSE x.p50_days  END AS p50_days,
     CASE WHEN x.n_patients_with_pair <= @min_cell_count THEN NULL ELSE x.p75_days  END AS p75_days
+-- BigQuery compat: wrap bare column refs in CAST to prevent SqlRender ordinal
+-- replacement in UNION ALL branches (OHDSI/SqlRender#249).
 FROM (
     -- first_to_first by anchor year
     SELECT
         'first_to_first' AS timing_type,
         CAST(index_year_int AS VARCHAR(4)) AS index_year,
-        from_event,
-        to_event,
+        CAST(from_event AS VARCHAR(10)) AS from_event,
+        CAST(to_event AS VARCHAR(10)) AS to_event,
         COUNT(*) AS n_patients_with_pair,
         MIN(CASE WHEN 4.0 * rn >= cnt THEN CAST(days_diff AS FLOAT) END) AS p25_days,
         MIN(CASE WHEN 2.0 * rn >= cnt THEN CAST(days_diff AS FLOAT) END) AS p50_days,
@@ -42,8 +44,8 @@ FROM (
     SELECT
         'first_to_closest_after' AS timing_type,
         CAST(index_year_int AS VARCHAR(4)) AS index_year,
-        from_event,
-        to_event,
+        CAST(from_event AS VARCHAR(10)) AS from_event,
+        CAST(to_event AS VARCHAR(10)) AS to_event,
         COUNT(*) AS n_patients_with_pair,
         MIN(CASE WHEN 4.0 * rn >= cnt THEN CAST(days_diff AS FLOAT) END) AS p25_days,
         MIN(CASE WHEN 2.0 * rn >= cnt THEN CAST(days_diff AS FLOAT) END) AS p50_days,
