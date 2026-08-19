@@ -8,17 +8,20 @@
 --       MET_L01 : patients who also have a first_met_date
 --     Small-cell suppression: n_patients <= @min_cell_count suppressed to -@min_cell_count.
 
--- BigQuery compat: UNION ALL lifted into a CTE so the outer GROUP BY is not
--- adjacent to a UNION ALL subquery (OHDSI/SqlRender#249).
-WITH patient_day_counts AS (
-    SELECT e.person_id, COUNT(*) AS n_days, 'ALL_L01' AS subgroup
+-- BigQuery compat: UNION ALL has no GROUP BY in either branch; the per-patient
+-- aggregation is in a separate CTE (OHDSI/SqlRender#249).
+WITH l01_raw AS (
+    SELECT e.person_id, 'ALL_L01' AS subgroup
     FROM #l01_event_days e
-    GROUP BY e.person_id
     UNION ALL
-    SELECT e.person_id, COUNT(*) AS n_days, 'MET_L01' AS subgroup
+    SELECT e.person_id, 'MET_L01' AS subgroup
     FROM #l01_event_days e
     JOIN #met_summary ms ON e.person_id = ms.person_id AND ms.first_met_date IS NOT NULL
-    GROUP BY e.person_id
+),
+patient_day_counts AS (
+    SELECT person_id, subgroup, COUNT(*) AS n_days
+    FROM l01_raw
+    GROUP BY person_id, subgroup
 )
 SELECT
     subgroup,
