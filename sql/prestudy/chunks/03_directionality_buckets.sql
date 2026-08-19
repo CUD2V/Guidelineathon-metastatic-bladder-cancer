@@ -64,6 +64,9 @@ met_l01_base AS (
     FROM #patient_char
     WHERE first_met_date IS NOT NULL
 )
+-- BigQuery compat: bare column refs in UNION ALL branches get replaced with
+-- ordinal integers by SqlRender (OHDSI/SqlRender#249). Wrapping in CAST()
+-- makes them expressions that survive translation.
 SELECT
     x.pair,
     x.index_year,
@@ -71,42 +74,42 @@ SELECT
     CASE WHEN x.n_patients <= @min_cell_count THEN -@min_cell_count ELSE x.n_patients END AS n_patients
 FROM (
     -- DX -> MET: OVERALL
-    SELECT 'DX_MET' AS pair, 'OVERALL' AS index_year, direction, COUNT(*) AS n_patients
+    SELECT 'DX_MET' AS pair, 'OVERALL' AS index_year, CAST(direction AS VARCHAR(20)) AS direction, COUNT(*) AS n_patients
     FROM dx_met_base
     GROUP BY direction
 
     UNION ALL
 
     -- DX -> MET: by DX year
-    SELECT 'DX_MET' AS pair, CAST(index_year_int AS VARCHAR(4)) AS index_year, direction, COUNT(*) AS n_patients
+    SELECT 'DX_MET' AS pair, CAST(index_year_int AS VARCHAR(4)) AS index_year, CAST(direction AS VARCHAR(20)) AS direction, COUNT(*) AS n_patients
     FROM dx_met_base
     GROUP BY index_year_int, direction
 
     UNION ALL
 
     -- DX -> L01: OVERALL
-    SELECT 'DX_L01' AS pair, 'OVERALL' AS index_year, direction, COUNT(*) AS n_patients
+    SELECT 'DX_L01' AS pair, 'OVERALL' AS index_year, CAST(direction AS VARCHAR(20)) AS direction, COUNT(*) AS n_patients
     FROM dx_l01_base
     GROUP BY direction
 
     UNION ALL
 
     -- DX -> L01: by DX year
-    SELECT 'DX_L01' AS pair, CAST(index_year_int AS VARCHAR(4)) AS index_year, direction, COUNT(*) AS n_patients
+    SELECT 'DX_L01' AS pair, CAST(index_year_int AS VARCHAR(4)) AS index_year, CAST(direction AS VARCHAR(20)) AS direction, COUNT(*) AS n_patients
     FROM dx_l01_base
     GROUP BY index_year_int, direction
 
     UNION ALL
 
     -- MET -> L01: OVERALL
-    SELECT 'MET_L01' AS pair, 'OVERALL' AS index_year, direction, COUNT(*) AS n_patients
+    SELECT 'MET_L01' AS pair, 'OVERALL' AS index_year, CAST(direction AS VARCHAR(20)) AS direction, COUNT(*) AS n_patients
     FROM met_l01_base
     GROUP BY direction
 
     UNION ALL
 
     -- MET -> L01: by MET year
-    SELECT 'MET_L01' AS pair, CAST(index_year_int AS VARCHAR(4)) AS index_year, direction, COUNT(*) AS n_patients
+    SELECT 'MET_L01' AS pair, CAST(index_year_int AS VARCHAR(4)) AS index_year, CAST(direction AS VARCHAR(20)) AS direction, COUNT(*) AS n_patients
     FROM met_l01_base
     GROUP BY index_year_int, direction
 ) x

@@ -142,19 +142,34 @@ zipPreStudyQueries <- function(outputFolder = NULL, archiveName = NULL) {
 # per chunk into settings$outputFolder/diagnostics. 00_setup.sql builds the
 # shared `#`-prefixed temp tables every other chunk reads, so it must run
 # first and on the same connection/session as the result chunks.
-runPreStudyDiagnostics <- function(connection, settings) {
+runPreStudyDiagnostics <- function(connection, settings, skipSetup = FALSE,
+                                   startFrom = NULL) {
   chunkDir <- file.path("prestudy", "chunks")
   allChunks <- sort(list.files(file.path(sqlDir, chunkDir), pattern = "\\.sql$"))
   setupFile <- "00_setup.sql"
   resultChunks <- setdiff(allChunks, setupFile)
 
+  # Resume from a specific chunk (e.g. "03_directionality_buckets.sql")
+  if (!is.null(startFrom)) {
+    idx <- match(startFrom, resultChunks)
+    if (is.na(idx)) idx <- grep(startFrom, resultChunks, fixed = TRUE)[1]
+    if (!is.na(idx)) {
+      message(sprintf("Resuming from %s (skipping %d earlier chunks)", resultChunks[idx], idx - 1L))
+      resultChunks <- resultChunks[idx:length(resultChunks)]
+    }
+  }
+
   diagDir <- file.path(settings$outputFolder, "diagnostics")
   dir.create(diagDir, recursive = TRUE, showWarnings = FALSE)
 
-  message("Running pre-study setup (00_setup.sql) ...")
-  runSqlFile(connection, file.path(chunkDir, setupFile),
-             cdm_database_schema = settings$cdmDatabaseSchema,
-             min_cell_count      = settings$minCellCount)
+  if (skipSetup) {
+    message("Skipping 00_setup.sql (temp tables assumed to exist)")
+  } else {
+    message("Running pre-study setup (00_setup.sql) ...")
+    runSqlFile(connection, file.path(chunkDir, setupFile),
+               cdm_database_schema = settings$cdmDatabaseSchema,
+               min_cell_count      = settings$minCellCount)
+  }
 
   for (f in resultChunks) {
     message(sprintf("Running %s", f))

@@ -51,9 +51,11 @@ bucketed AS (
     FROM death_obs_gaps
     WHERE gap_death_after_obs IS NOT NULL
 )
+-- BigQuery compat: wrap bare column refs in CAST to prevent SqlRender ordinal
+-- replacement in UNION ALL branches (OHDSI/SqlRender#249).
 SELECT anchor_event, gap_bucket, n_patients
 FROM (
-    SELECT 'INDEX' AS anchor_event, gap_bucket,
+    SELECT 'INDEX' AS anchor_event, CAST(gap_bucket AS VARCHAR(20)) AS gap_bucket,
         CASE WHEN COUNT(*) > 0 AND COUNT(*) <= @min_cell_count THEN -@min_cell_count ELSE COUNT(*) END AS n_patients,
         MIN(sort_key) AS sort_key
     FROM bucketed
@@ -61,7 +63,7 @@ FROM (
 
     UNION ALL
 
-    SELECT 'FIRST_MET' AS anchor_event, gap_bucket,
+    SELECT 'FIRST_MET' AS anchor_event, CAST(gap_bucket AS VARCHAR(20)) AS gap_bucket,
         CASE WHEN COUNT(*) > 0 AND COUNT(*) <= @min_cell_count THEN -@min_cell_count ELSE COUNT(*) END AS n_patients,
         MIN(sort_key) AS sort_key
     FROM bucketed
