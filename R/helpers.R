@@ -95,6 +95,7 @@ generateCohorts <- function(connection, cohortDefinitionSet, dropTables = TRUE,
 runSqlFile <- function(connection, file, ...) {
   sql <- paste(readLines(file.path(sqlDir, file), warn = FALSE), collapse = "\n")
   sql <- SqlRender::render(sql, ..., warnOnMissingParameters = FALSE)
+  if (.getDbms(connection) == "bigquery") sql <- .splitInsertUnionAll(sql)
   sql <- SqlRender::translate(sql, targetDialect = .getDbms(connection))
   DatabaseConnector::executeSql(connection, sql)
 }
@@ -103,8 +104,93 @@ runSqlFile <- function(connection, file, ...) {
 querySqlFile <- function(connection, file, ...) {
   sql <- paste(readLines(file.path(sqlDir, file), warn = FALSE), collapse = "\n")
   sql <- SqlRender::render(sql, ..., warnOnMissingParameters = FALSE)
+  if (.getDbms(connection) == "bigquery") sql <- .splitInsertUnionAll(sql)
   sql <- SqlRender::translate(sql, targetDialect = .getDbms(connection))
   DatabaseConnector::querySql(connection, sql)
+}
+
+# --- BigQuery workaround: split INSERT...UNION ALL into separate INSERTs ---
+# SqlRender's BigQuery translator incorrectly replaces column references with
+# ordinal integers in 2nd+ branches of a UNION ALL (OHDSI/SqlRender#249).
+# Workaround: split each INSERT INTO ... SELECT ... UNION ALL SELECT ... into
+# separate INSERT INTO ... SELECT ... statements before translation.
+# Only activated when targetDialect is "bigquery"; other dialects skip this.
+.splitInsertUnionAll <- function(sql) {
+  stmts <- SqlRender::splitSql(sql)
+  out <- character(length(stmts))
+
+  for (i in seq_along(stmts)) {
+    stmt <- trimws(stmts[i])
+    if (!nzchar(stmt) ||
+        !grepl("\\bINSERT\\s+INTO\\b", stmt, ignore.case = TRUE, perl = TRUE) ||
+        !grepl("\\bUNION\\s+ALL\\b", stmt, ignore.case = TRUE, perl = TRUE)) {
+      out[i] <- stmt
+      next
+    }
+
+    # Extract the INSERT INTO #table (col1, col2, ...) prefix
+    m <- regexpr(
+      "INSERT\\s+INTO\\s+\\S+\\s*\\([^)]+\\)",
+      stmt, ignore.case = TRUE, perl = TRUE
+    )
+    if (m == -1L) {
+      out[i] <- stmt
+      next
+    }
+    prefix <- regmatches(stmt, m)
+    body <- trimws(substring(stmt, m + attr(m, "match.length")))
+
+    # Split body on top-level UNION ALL (not inside parentheses)
+    branches <- .splitTopLevelUnionAll(body)
+    if (length(branches) <= 1L) {
+      out[i] <- stmt
+      next
+    }
+
+    # Rebuild as separate INSERT statements
+    parts <- vapply(branches, function(b) {
+      b <- trimws(b)
+      b <- sub(";\\s*$", "", b)
+      if (nzchar(b)) paste0(prefix, "\n", b, ";") else ""
+    }, character(1))
+    out[i] <- paste(parts[nzchar(parts)], collapse = "\n")
+  }
+
+  paste(out[nzchar(out)], collapse = "\n")
+}
+
+# Split SQL text on UNION ALL that appears at parenthesis depth 0.
+# UNION ALL inside subqueries (depth > 0) is left intact.
+.splitTopLevelUnionAll <- function(sql) {
+  chars <- strsplit(sql, "")[[1]]
+  n <- length(chars)
+  upper <- toupper(sql)
+  depth <- 0L
+  pieces <- list()
+  seg_start <- 1L
+  i <- 1L
+
+  while (i <= n) {
+    ch <- chars[i]
+    if (ch == "(") {
+      depth <- depth + 1L
+    } else if (ch == ")") {
+      depth <- depth - 1L
+    } else if (depth == 0L && ch %in% c("U", "u") && i + 8L <= n) {
+      candidate <- substr(upper, i, i + 8L)
+      if (grepl("^UNION\\s+ALL", candidate)) {
+        ua <- regexpr("^UNION\\s+ALL", candidate)
+        skip <- attr(ua, "match.length")
+        pieces <- c(pieces, substr(sql, seg_start, i - 1L))
+        i <- i + skip
+        seg_start <- i
+        next
+      }
+    }
+    i <- i + 1L
+  }
+  pieces <- c(pieces, substr(sql, seg_start, n))
+  as.character(pieces)
 }
 
 # --- write a result data frame to results/eligibility ----------------------
