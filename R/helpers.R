@@ -156,7 +156,7 @@ querySqlFile <- function(connection, file, ...) {
     out[i] <- paste(parts[nzchar(parts)], collapse = "\n")
   }
 
-  paste(out[nzchar(out)], collapse = ";\n")
+  paste(out[nzchar(out)], collapse = "\n;\n")
 }
 
 # Split SQL text on UNION ALL that appears at parenthesis depth 0.
