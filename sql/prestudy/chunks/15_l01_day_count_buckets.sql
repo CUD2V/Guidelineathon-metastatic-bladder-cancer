@@ -8,6 +8,18 @@
 --       MET_L01 : patients who also have a first_met_date
 --     Small-cell suppression: n_patients <= @min_cell_count suppressed to -@min_cell_count.
 
+-- BigQuery compat: UNION ALL lifted into a CTE so the outer GROUP BY is not
+-- adjacent to a UNION ALL subquery (OHDSI/SqlRender#249).
+WITH patient_day_counts AS (
+    SELECT e.person_id, COUNT(*) AS n_days, 'ALL_L01' AS subgroup
+    FROM #l01_event_days e
+    GROUP BY e.person_id
+    UNION ALL
+    SELECT e.person_id, COUNT(*) AS n_days, 'MET_L01' AS subgroup
+    FROM #l01_event_days e
+    JOIN #met_summary ms ON e.person_id = ms.person_id AND ms.first_met_date IS NOT NULL
+    GROUP BY e.person_id
+)
 SELECT
     subgroup,
     CASE
@@ -17,16 +29,7 @@ SELECT
         ELSE '12plus'
     END AS days_bucket,
     CASE WHEN COUNT(*) > 0 AND COUNT(*) <= @min_cell_count THEN -@min_cell_count ELSE COUNT(*) END AS n_patients
-FROM (
-    SELECT e.person_id, COUNT(*) AS n_days, 'ALL_L01' AS subgroup
-    FROM #l01_event_days e
-    GROUP BY e.person_id
-    UNION ALL
-    SELECT e.person_id, COUNT(*) AS n_days, 'MET_L01' AS subgroup
-    FROM #l01_event_days e
-    JOIN #met_summary ms ON e.person_id = ms.person_id AND ms.first_met_date IS NOT NULL
-    GROUP BY e.person_id
-) x
+FROM patient_day_counts
 GROUP BY
     subgroup,
     CASE
