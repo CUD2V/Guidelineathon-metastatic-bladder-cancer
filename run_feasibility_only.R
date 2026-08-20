@@ -119,7 +119,7 @@ connection <- DatabaseConnector::connect(connectionDetails)
 .checkDbiPostgresBug(connection)
 
 # source("R/01_artemis.R")            # (a) — already completed; skip on re-run
-source("R/02_eligibility_inputs.R") # (b)
+# source("R/02_eligibility_inputs.R") # (b) — already completed; skip on re-run
 source("R/03_main_cohorts.R")       # (c)
 source("R/04_lab_ranges.R")         # (d) lab test ranges on main cohorts
 source("R/05_eligibility_coverage.R") # eligibility-input counts + Target 1A coverage
