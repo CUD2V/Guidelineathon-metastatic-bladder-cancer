@@ -118,7 +118,7 @@ source("R/setup.R")          # config checks + derived paths + executionSettings
 connection <- DatabaseConnector::connect(connectionDetails)
 .checkDbiPostgresBug(connection)
 
-source("R/01_artemis.R")            # (a)
+# source("R/01_artemis.R")            # (a) — already completed; skip on re-run
 source("R/02_eligibility_inputs.R") # (b)
 source("R/03_main_cohorts.R")       # (c)
 source("R/04_lab_ranges.R")         # (d) lab test ranges on main cohorts
