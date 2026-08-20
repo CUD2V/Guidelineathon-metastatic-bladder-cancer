@@ -120,10 +120,13 @@ connection <- DatabaseConnector::connect(connectionDetails)
 
 # source("R/01_artemis.R")            # (a) — already completed; skip on re-run
 # source("R/02_eligibility_inputs.R") # (b) — already completed; skip on re-run
-source("R/03_main_cohorts.R")       # (c)
-source("R/04_lab_ranges.R")         # (d) lab test ranges on main cohorts
-source("R/05_eligibility_coverage.R") # eligibility-input counts + Target 1A coverage
-source("R/06_artemis_assessment.R") # ARTEMIS alignment assessment (uses artemisResult)
+# source("R/03_main_cohorts.R")       # (c) — already completed; skip on re-run
+# source("R/04_lab_ranges.R")         # (d) — already completed; skip on re-run
+# source("R/05_eligibility_coverage.R") # (e) — already completed; skip on re-run
+# source("R/06_artemis_assessment.R") # (f) — already completed; skip on re-run
+# Reconstruct mainManifest from the CSV that step (c) already wrote (for g/h)
+mainManifest <- readr::read_csv(file.path(settings$outputFolder, "eligibility", "cohort_counts.csv"),
+                                show_col_types = FALSE)
 source("R/07_demographics.R")       # per-cohort demographics (age / sex / index year)
 source("R/08_covariates.R")         # covariate overlap with 1A (comorbidities + PS)
 
