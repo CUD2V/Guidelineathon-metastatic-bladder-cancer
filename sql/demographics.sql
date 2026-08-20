@@ -23,47 +23,52 @@ WITH coh AS (
     FROM @work_database_schema.@cohort_table c
     JOIN @cdm_database_schema.person p
       ON p.person_id = c.subject_id
+),
+-- SqlRender #249: GROUP BY must be inside CTEs when UNION ALL is present
+age_agg AS (
+  SELECT cohort_definition_id,
+         'age_group' AS characteristic,
+         CASE WHEN age_at_index > 65 THEN '>65' ELSE '<=65' END AS stratum,
+         CASE WHEN age_at_index > 65 THEN 2 ELSE 1 END          AS sort_key,
+         COUNT(*)                                               AS n_subjects
+    FROM coh
+   GROUP BY cohort_definition_id,
+            CASE WHEN age_at_index > 65 THEN '>65' ELSE '<=65' END,
+            CASE WHEN age_at_index > 65 THEN 2 ELSE 1 END
+),
+sex_agg AS (
+  SELECT cohort_definition_id,
+         'sex' AS characteristic,
+         CASE gender_concept_id WHEN 8507 THEN 'Male'
+                                WHEN 8532 THEN 'Female'
+                                ELSE 'Other-Unknown' END AS stratum,
+         CASE gender_concept_id WHEN 8507 THEN 1
+                                WHEN 8532 THEN 2
+                                ELSE 3 END               AS sort_key,
+         COUNT(*)                                        AS n_subjects
+    FROM coh
+   GROUP BY cohort_definition_id,
+            CASE gender_concept_id WHEN 8507 THEN 'Male'
+                                   WHEN 8532 THEN 'Female'
+                                   ELSE 'Other-Unknown' END,
+            CASE gender_concept_id WHEN 8507 THEN 1
+                                   WHEN 8532 THEN 2
+                                   ELSE 3 END
+),
+year_agg AS (
+  SELECT cohort_definition_id,
+         'index_year' AS characteristic,
+         CAST(index_year AS VARCHAR(4)) AS stratum,
+         index_year                     AS sort_key,
+         COUNT(*)                       AS n_subjects
+    FROM coh
+   GROUP BY cohort_definition_id,
+            CAST(index_year AS VARCHAR(4)),
+            index_year
 )
--- age group at index
-SELECT cohort_definition_id,
-       'age_group' AS characteristic,
-       CASE WHEN age_at_index > 65 THEN '>65' ELSE '<=65' END AS stratum,
-       CASE WHEN age_at_index > 65 THEN 2 ELSE 1 END          AS sort_key,
-       COUNT(*)                                               AS n_subjects
-  FROM coh
- GROUP BY cohort_definition_id,
-          CASE WHEN age_at_index > 65 THEN '>65' ELSE '<=65' END,
-          CASE WHEN age_at_index > 65 THEN 2 ELSE 1 END
-
+SELECT * FROM age_agg
 UNION ALL
--- sex
-SELECT cohort_definition_id,
-       'sex' AS characteristic,
-       CASE gender_concept_id WHEN 8507 THEN 'Male'
-                              WHEN 8532 THEN 'Female'
-                              ELSE 'Other-Unknown' END AS stratum,
-       CASE gender_concept_id WHEN 8507 THEN 1
-                              WHEN 8532 THEN 2
-                              ELSE 3 END               AS sort_key,
-       COUNT(*)                                        AS n_subjects
-  FROM coh
- GROUP BY cohort_definition_id,
-          CASE gender_concept_id WHEN 8507 THEN 'Male'
-                                 WHEN 8532 THEN 'Female'
-                                 ELSE 'Other-Unknown' END,
-          CASE gender_concept_id WHEN 8507 THEN 1
-                                 WHEN 8532 THEN 2
-                                 ELSE 3 END
-
+SELECT * FROM sex_agg
 UNION ALL
--- index year
-SELECT cohort_definition_id,
-       'index_year' AS characteristic,
-       CAST(index_year AS VARCHAR(4)) AS stratum,
-       index_year                     AS sort_key,
-       COUNT(*)                       AS n_subjects
-  FROM coh
- GROUP BY cohort_definition_id,
-          CAST(index_year AS VARCHAR(4)),
-          index_year
+SELECT * FROM year_agg
 ;
