@@ -19,7 +19,8 @@ WITH coh AS (
          c.subject_id,
          p.gender_concept_id,
          YEAR(c.cohort_start_date) - p.year_of_birth AS age_at_index,
-         YEAR(c.cohort_start_date)                   AS index_year
+         YEAR(c.cohort_start_date)                   AS index_year,
+         CAST(YEAR(c.cohort_start_date) AS VARCHAR(4)) AS index_year_str
     FROM @work_database_schema.@cohort_table c
     JOIN @cdm_database_schema.person p
       ON p.person_id = c.subject_id
@@ -58,12 +59,12 @@ sex_agg AS (
 year_agg AS (
   SELECT cohort_definition_id,
          'index_year' AS characteristic,
-         CAST(index_year AS VARCHAR(4)) AS stratum,
-         index_year                     AS sort_key,
-         COUNT(*)                       AS n_subjects
+         index_year_str AS stratum,
+         index_year     AS sort_key,
+         COUNT(*)       AS n_subjects
     FROM coh
    GROUP BY cohort_definition_id,
-            CAST(index_year AS VARCHAR(4)),
+            index_year_str,
             index_year
 )
 SELECT * FROM age_agg
