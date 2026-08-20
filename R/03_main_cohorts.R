@@ -188,10 +188,33 @@ print(tibble::as_tibble(cohortCounts), n = Inf)
 # already computed the rule stats during generation — just read them back.
 # Cohorts with no InclusionRules simply produce no rows.
 tableNames <- CohortGenerator::getCohortTableNames(cohortTable = settings$cohortTable)
-CohortGenerator::insertInclusionRuleNames(
-  connection = connection, cohortDefinitionSet = jsonSet,
-  cohortDatabaseSchema = settings$workDatabaseSchema,
-  cohortInclusionTable = tableNames$cohortInclusionTable)
+# BigQuery: CohortGenerator::insertInclusionRuleNames sends numeric 1.0 where
+# INT64 is required. Extract inclusion rules ourselves with integer types.
+if (.getDbms(connection) == "bigquery") {
+  incRules <- do.call(rbind, lapply(seq_len(nrow(jsonSet)), function(i) {
+    j <- jsonlite::fromJSON(jsonSet$json[i], simplifyVector = FALSE)
+    rules <- j$InclusionRules
+    if (length(rules) == 0) return(NULL)
+    data.frame(
+      cohort_definition_id = as.integer(jsonSet$cohortId[i]),
+      rule_sequence        = as.integer(seq_along(rules) - 1L),
+      name                 = vapply(rules, function(r) r$name %||% "", character(1)),
+      stringsAsFactors = FALSE)
+  }))
+  if (!is.null(incRules) && nrow(incRules) > 0) {
+    DatabaseConnector::insertTable(
+      connection = connection,
+      databaseSchema = settings$workDatabaseSchema,
+      tableName = tableNames$cohortInclusionTable,
+      data = incRules, dropTableIfExists = FALSE,
+      createTable = FALSE, camelCaseToSnakeCase = FALSE)
+  }
+} else {
+  CohortGenerator::insertInclusionRuleNames(
+    connection = connection, cohortDefinitionSet = jsonSet,
+    cohortDatabaseSchema = settings$workDatabaseSchema,
+    cohortInclusionTable = tableNames$cohortInclusionTable)
+}
 
 stats <- CohortGenerator::getCohortStats(
   connection = connection, cohortDatabaseSchema = settings$workDatabaseSchema,
