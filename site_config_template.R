@@ -24,10 +24,34 @@ connectionDetails <- DatabaseConnector::createConnectionDetails(
   password = ""
 )
 
+# --- Settings -----------------------------------------------------------------
+# run_diagnostics_only.R only needs cdmDatabaseSchema, minCellCount, outputFolder.
+# run_feasibility_only.R needs the full list below (study-specific defaults are
+# defined in the script; values here override them).
 settings <- list(
-  cdmDatabaseSchema = "YOUR_GCP_PROJECT.YOUR_CDM_DATASET",
-  minCellCount      = 5L,
-  outputFolder      = file.path("results")
+  databaseId          = "YOUR_SITE_ID",
+  cdmDatabaseSchema   = "YOUR_GCP_PROJECT.YOUR_CDM_DATASET",
+  vocabDatabaseSchema = "YOUR_GCP_PROJECT.YOUR_CDM_DATASET",
+  workDatabaseSchema  = "YOUR_GCP_PROJECT.YOUR_WRITE_DATASET",
+
+  # Work tables (defaults from run_feasibility_only.R; override here if needed)
+  cohortTable          = "bc_cohort",
+  labCohortTable       = "bc_lab_cohort",
+  rawLabResultsTable   = "bc_raw_lab_results",
+  covariateCohortTable = "bc_covariate_cohort",
+  artemisCohortName    = "ARTEMIS bladder cohort",
+  episodeTable         = "bc_artemis_episodes",
+  regimenClassTable    = "bc_regimen_classifications",
+
+  # Run settings
+  minCellCount        = 5L,
+  labWindowBeforeDays = 14L,
+  labWindowAfterDays  = 7L,
+  stripEndocrineTherapy = TRUE,
+  validDrugsRegimenComponents = TRUE,
+  validDrugsAtcClasses = c("L01", "L02", "L03", "L04"),
+  assessmentAtcClasses = NULL,
+  outputFolder        = file.path("results")
 )
 
 # BigQuery has no real temp tables — SqlRender emulates them as permanent

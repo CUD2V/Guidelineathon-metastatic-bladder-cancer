@@ -98,6 +98,14 @@ settings <- list(
   outputFolder        = file.path("results")
 )
 
+# --- Optional: source a gitignored site_config.R for credentials/schemas ----
+# This keeps site-specific connection details out of version control.
+# Copy site_config_template.R to site_config.R and fill in your values.
+# It should define connectionDetails and override site-specific settings fields
+# (e.g. cdmDatabaseSchema, workDatabaseSchema, databaseId).
+# Settings defined above serve as defaults; site_config.R values take precedence.
+if (file.exists("site_config.R")) source("site_config.R")
+
 # ===========================================================================
 # Run  —  do not edit below
 # ===========================================================================
