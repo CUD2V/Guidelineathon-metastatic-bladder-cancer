@@ -6,10 +6,49 @@
 # ===========================================================================
 
 if (is.null(connectionDetails))
-  stop("Define `connectionDetails` in run.R's CONFIG block before running.",
+  stop("Define `connectionDetails` in run.R's CONFIG block (or site_config.R) ",
+       "before running.", call. = FALSE)
+
+# --- validate all required settings up-front --------------------------------
+# Catch missing/NULL/empty settings before the pipeline is 30 minutes in.
+.requiredStr <- c("databaseId", "cdmDatabaseSchema", "workDatabaseSchema",
+                  "cohortTable", "labCohortTable", "rawLabResultsTable",
+                  "covariateCohortTable", "artemisCohortName",
+                  "episodeTable", "regimenClassTable", "outputFolder")
+.requiredInt <- c("minCellCount", "labWindowBeforeDays", "labWindowAfterDays",
+                  "conditionFlagWindowBeforeDays", "conditionFlagWindowAfterDays",
+                  "bodyMeasurementsWindowDays")
+
+.missing <- character(0)
+for (.s in .requiredStr) {
+  v <- settings[[.s]]
+  if (is.null(v) || !nzchar(v))
+    .missing <- c(.missing, paste0("  ", .s, " — must be a non-empty string"))
+}
+for (.s in .requiredInt) {
+  v <- settings[[.s]]
+  if (is.null(v) || !is.numeric(v))
+    .missing <- c(.missing, paste0("  ", .s, " — must be a number (integer)"))
+}
+if (length(.missing) > 0L)
+  stop("site_config.R / CONFIG block: the following settings are missing or invalid:\n",
+       paste(.missing, collapse = "\n"), "\n\nSee site_config_template.R for reference.",
        call. = FALSE)
-stopifnot(nzchar(settings$databaseId),
-          nzchar(settings$cdmDatabaseSchema), nzchar(settings$workDatabaseSchema))
+
+# BigQuery: sqlRenderTempEmulationSchema must be set (no real temp tables)
+.dbms <- tryCatch(connectionDetails$dbms, error = function(e) NULL) %||%
+         tryCatch(connectionDetails@dbms, error = function(e) NULL)
+if (identical(.dbms, "bigquery")) {
+  .tempSchema <- getOption("sqlRenderTempEmulationSchema")
+  if (is.null(.tempSchema) || !nzchar(.tempSchema))
+    stop("BigQuery requires options(sqlRenderTempEmulationSchema = ...) to be set.\n",
+         "Add it to site_config.R — see site_config_template.R for reference.",
+         call. = FALSE)
+}
+
+message("Config validated: databaseId = \"", settings$databaseId, "\", ",
+        "cdm = ", settings$cdmDatabaseSchema, ", work = ", settings$workDatabaseSchema)
+rm(.requiredStr, .requiredInt, .missing, .s, .dbms)
 
 if (!nzchar(settings$vocabDatabaseSchema))
   settings$vocabDatabaseSchema <- settings$cdmDatabaseSchema
