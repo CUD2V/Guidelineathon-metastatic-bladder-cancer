@@ -114,6 +114,17 @@ generateCohorts <- function(connection, cohortDefinitionSet, dropTables = TRUE,
     SqlRender::render(s, vocabulary_database_schema = settings$vocabDatabaseSchema,
                       warnOnMissingParameters = FALSE), character(1))
 
+  # BigQuery: days_supply may be FLOAT64/NUMERIC in the CDM, but SqlRender
+  # translates DATEADD(day, de.days_supply, ...) to DATE_ADD(..., INTERVAL
+  # de.days_supply DAY), and BigQuery's INTERVAL requires an INT64. Wrap in
+  # CAST before CohortGenerator translates, so the INTERVAL receives an
+  # integer. (See also docs/LOAD_COHORT.md for the same issue in standalone
+  # cohort SQL.)
+  if (.getDbms(connection) == "bigquery") {
+    cds$sql <- gsub("de.days_supply", "CAST(de.days_supply AS INT)",
+                    cds$sql, fixed = TRUE)
+  }
+
   CohortGenerator::generateCohortSet(
     connection = connection, cdmDatabaseSchema = settings$cdmDatabaseSchema,
     cohortDatabaseSchema = settings$workDatabaseSchema,

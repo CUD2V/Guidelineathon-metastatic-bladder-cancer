@@ -75,6 +75,14 @@ settings <- list(
   outputFolder        = file.path("results")
 )
 
+# --- Optional: source a gitignored site_config.R for credentials/schemas ----
+# site_config.R is gitignored — keeps connection details out of version control.
+# Copy site_config_template.R to site_config.R and fill in your values.
+# (Or edit the CONFIG block above directly — either way works, but credentials
+# in a gitignored file are safer for shared repos.)
+# Settings defined above serve as defaults; site_config.R values take precedence.
+if (file.exists("site_config.R")) source("site_config.R")
+
 # ===========================================================================
 # Run  —  do not edit below
 # ===========================================================================

@@ -79,6 +79,11 @@ settings <- list(
   outputFolder        = file.path("results")
 )
 
+# --- Optional: source a gitignored site_config.R for credentials/schemas ----
+# Copy site_config_template.R to site_config.R and fill in your values.
+# Settings defined above serve as defaults; site_config.R values take precedence.
+if (file.exists("site_config.R")) source("site_config.R")
+
 # ===========================================================================
 # Run  —  do not edit below
 # ===========================================================================
