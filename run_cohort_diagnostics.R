@@ -56,6 +56,16 @@ settings <- list(
   regenerateCohorts = TRUE
 )
 
+# --- Optional: source a gitignored site_config.R for credentials/schemas ----
+# Copy site_config_template.R to site_config.R and fill in your values.
+# Settings defined above serve as defaults; site_config.R values take precedence.
+# Note: site_config.R sets cohortTable = "bc_cohort" (the main tree); this
+# script uses a separate table so it can't clobber a full run.R pass -- force
+# the diagnostics-specific name back after sourcing.
+if (file.exists("site_config.R")) source("site_config.R")
+settings$cohortTable     <- "bc_cohort_diagnostics"
+settings$regenerateCohorts <- settings$regenerateCohorts %||% TRUE
+
 # ===========================================================================
 # Run  —  do not edit below
 # ===========================================================================
@@ -106,19 +116,24 @@ message("\n=== Cohort diagnostics: running CohortDiagnostics::executeDiagnostics
 exportFolder <- file.path(settings$outputFolder, "cohort_diagnostics")
 dir.create(exportFolder, recursive = TRUE, showWarnings = FALSE)
 
-# All runXxx flags left at executeDiagnostics()'s own defaults (every check
-# except runTimeSeries) -- pass e.g. runOrphanConcepts = FALSE here if a run
-# is taking too long on a large CDM.
-CohortDiagnostics::executeDiagnostics(
+# Temporal characterization and incidence rates are off (general
+# characterization, not phenotype evaluation); every other check runs at
+# executeDiagnostics()'s defaults. runCohortDiagnostics() is
+# executeDiagnostics() plus upstream-bug patches (R/helpers.R +
+# R/vendor_utils.R) — on BigQuery, it patches CohortGenerator's
+# getCohortInclusionRules() to use as.integer() instead of as.numeric().
+runCohortDiagnostics(
+  connection               = connection,
   cohortDefinitionSet      = cohortDefinitionSet,
   exportFolder             = exportFolder,
   databaseId               = settings$databaseId,
   cohortDatabaseSchema     = settings$workDatabaseSchema,
-  connection               = connection,
   cdmDatabaseSchema        = settings$cdmDatabaseSchema,
   vocabularyDatabaseSchema = settings$vocabDatabaseSchema,
   cohortTable              = settings$cohortTable,
-  minCellCount             = settings$minCellCount)
+  minCellCount             = settings$minCellCount,
+  runIncidenceRate                  = FALSE,
+  runTemporalCohortCharacterization = FALSE)
 
 utils::zip(zipfile = file.path(settings$outputFolder, "cohort_diagnostics.zip"),
            files = list.files(exportFolder, recursive = TRUE, full.names = TRUE,

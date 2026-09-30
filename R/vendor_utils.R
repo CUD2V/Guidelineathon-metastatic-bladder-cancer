@@ -40,3 +40,86 @@ if (!exists("%||%")) {
       call. = FALSE)
   }
 }
+
+# ===========================================================================
+# Upstream-bug patches for CohortDiagnostics::executeDiagnostics()
+# ===========================================================================
+# These monkey-patch specific package functions in-memory for the duration
+# of a single executeDiagnostics() call, then restore the originals on exit.
+# Each patch is a no-op when its condition doesn't apply (wrong dialect, call
+# site already fixed, etc.).
+
+# --- low-level patching machinery ------------------------------------------
+
+.replaceInNamespace <- function(pkg, fn, f) {
+  ns <- asNamespace(pkg)
+  unlockBinding(fn, ns)
+  assign(fn, f, envir = ns)
+  lockBinding(fn, ns)
+  s3 <- get(".__S3MethodsTable__.", envir = ns)
+  if (exists(fn, envir = s3, inherits = FALSE)) assign(fn, f, envir = s3)
+  attached <- paste0("package:", pkg)
+  if (attached %in% search()) {
+    env <- as.environment(attached)
+    if (exists(fn, envir = env, inherits = FALSE)) {
+      unlockBinding(fn, env)
+      assign(fn, f, envir = env)
+      lockBinding(fn, env)
+    }
+  }
+}
+
+.rewriteCall <- function(expr, target, replacement) {
+  if (identical(expr, replacement)) return(expr)
+  if (identical(expr, target)) return(replacement)
+  if (is.call(expr)) {
+    for (i in seq_along(expr)[-1]) {
+      el <- expr[[i]]
+      if (!missing(el) && !is.null(el)) expr[[i]] <- .rewriteCall(el, target, replacement)
+    }
+  }
+  expr
+}
+
+.patchFunctions <- function(pkg, fns, target, replacement, what) {
+  ns <- asNamespace(pkg)
+  originals <- list()
+  for (fn in fns) {
+    f <- get0(fn, envir = ns, inherits = FALSE)
+    if (!is.function(f)) next
+    newBody <- .rewriteCall(body(f), target, replacement)
+    if (identical(newBody, body(f))) next
+    originals[[fn]] <- f
+    body(f) <- newBody
+    .replaceInNamespace(pkg, fn, f)
+  }
+  if (length(originals))
+    message("Patched ", pkg, "::", paste(names(originals), collapse = ", "), " ", what)
+  attr(originals, "pkg") <- pkg
+  invisible(originals)
+}
+
+.restorePatchedFunctions <- function(originals) {
+  pkg <- attr(originals, "pkg")
+  for (fn in names(originals)) .replaceInNamespace(pkg, fn, originals[[fn]])
+  if (length(originals))
+    message("Restored ", pkg, "::", paste(names(originals), collapse = ", "))
+  invisible(NULL)
+}
+
+# --- BigQuery: CohortGenerator::getCohortInclusionRules() as.numeric() bug -
+# CohortGenerator::getCohortInclusionRules() builds cohortDefinitionId with
+# as.numeric(), and insertInclusionRuleNames() inserts that double into an
+# INT64 column. BigQuery's JDBC driver rejects it ("Bad int64 value: 2.0");
+# every other dialect's driver coerces it. The main pipeline avoids this by
+# inserting the rows itself (R/03_main_cohorts.R), but CohortDiagnostics
+# calls insertInclusionRuleNames() internally, so this rewrites that one
+# as.numeric() to as.integer(). Only applied on BigQuery.
+.patchBigQueryInclusionRuleIds <- function(connection) {
+  if (.getDbms(connection) != "bigquery") return(invisible(list()))
+  .patchFunctions(
+    "CohortGenerator", "getCohortInclusionRules",
+    target = quote(as.numeric(cohortDefinitionSet$cohortId[i])),
+    replacement = quote(as.integer(cohortDefinitionSet$cohortId[i])),
+    what = "to insert integer cohortDefinitionId on BigQuery")
+}
