@@ -89,6 +89,12 @@ generateCohorts <- function(connection, cohortDefinitionSet, dropTables = TRUE,
     SqlRender::render(s, vocabulary_database_schema = settings$vocabDatabaseSchema,
                       warnOnMissingParameters = FALSE), character(1))
 
+  # BigQuery INTERVAL requires INT but days_supply may be FLOAT64 in the CDM.
+  if (.getDbms(connection) == "bigquery") {
+    cds$sql <- gsub("de.days_supply", "CAST(de.days_supply AS INT)",
+                    cds$sql, fixed = TRUE)
+  }
+
   CohortGenerator::generateCohortSet(
     connection = connection, cdmDatabaseSchema = settings$cdmDatabaseSchema,
     cohortDatabaseSchema = settings$workDatabaseSchema,
