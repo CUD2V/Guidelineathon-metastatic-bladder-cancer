@@ -90,14 +90,21 @@ generateCohorts <- function(connection, cohortDefinitionSet, dropTables = TRUE,
                       warnOnMissingParameters = FALSE), character(1))
 
   # BigQuery INTERVAL requires INT but days_supply may be FLOAT64 in the CDM.
-  # Step 1: wrap every days_supply word with CAST (catches both aliased and bare).
-  # Step 2: repair "alias.CAST(days_supply AS INT)" -> "CAST(alias.days_supply AS INT)".
+  # SqlRender translates DATEADD(day, days_supply, ...) -> INTERVAL days_supply DAY,
+  # but BigQuery rejects FLOAT64 in INTERVAL. Patching the pre-translation OHDSI SQL
+  # is unreliable: SqlRender's DATEADD grammar re-extracts just the bare column name,
+  # discarding any CAST() wrapper we add. Instead, wrap SqlRender::translate for the
+  # duration of generateCohortSet() and fix the output string directly.
   if (.getDbms(connection) == "bigquery") {
-    cds$sql <- gsub("\\bdays_supply\\b", "CAST(days_supply AS INT)",
-                    cds$sql, perl = TRUE)
-    cds$sql <- gsub("(\\w+)\\.CAST\\(days_supply AS INT\\)",
-                    "CAST(\\1.days_supply AS INT)",
-                    cds$sql, perl = TRUE)
+    .orig_translate <- get("translate", envir = asNamespace("SqlRender"), inherits = FALSE)
+    on.exit(.replaceInNamespace("SqlRender", "translate", .orig_translate), add = TRUE)
+    .replaceInNamespace("SqlRender", "translate", (function(orig) {
+      function(sql, ...) {
+        r <- orig(sql, ...)
+        gsub("INTERVAL days_supply DAY", "INTERVAL CAST(days_supply AS INT) DAY",
+             r, fixed = TRUE)
+      }
+    })(.orig_translate))
   }
 
   CohortGenerator::generateCohortSet(
