@@ -101,8 +101,13 @@ generateCohorts <- function(connection, cohortDefinitionSet, dropTables = TRUE,
     .replaceInNamespace("SqlRender", "translate", (function(orig) {
       function(sql, ...) {
         r <- orig(sql, ...)
-        gsub("INTERVAL days_supply DAY", "INTERVAL CAST(days_supply AS INT) DAY",
-             r, fixed = TRUE)
+        # Match both bare (days_supply) and aliased (de.days_supply) forms.
+        n <- sum(grepl("INTERVAL (\\w+\\.)?days_supply DAY", r, perl = TRUE))
+        r <- gsub("INTERVAL (\\w+\\.)?days_supply DAY",
+                  "INTERVAL CAST(\\1days_supply AS INT) DAY",
+                  r, perl = TRUE)
+        if (n > 0L) message("  [bigquery] patched ", n, " days_supply INTERVAL reference(s)")
+        r
       }
     })(.orig_translate))
   }
