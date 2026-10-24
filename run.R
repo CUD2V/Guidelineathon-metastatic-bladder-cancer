@@ -20,9 +20,17 @@
 # CONFIG  [EDIT HERE]
 # ===========================================================================
 
+# --- Optional: source a gitignored site_config.R for credentials/schemas ----
+# Copy site_config_template.R to site_config.R and fill in your values.
+# When present, site_config.R sets connectionDetails, settings, etc. directly,
+# and the if(!exists(...)) guards below keep the inline defaults from
+# overwriting them.
+if (file.exists("site_config.R")) source("site_config.R")
+
 # --- Database connection ----------------------------------------------------
 # Define however your site connects -- see README.md's Requirements section for examples.
-connectionDetails <- NULL   # <-- REPLACE with your connection
+if (!exists("connectionDetails") || is.null(connectionDetails))
+  connectionDetails <- NULL   # <-- REPLACE with your connection
 
 # --- Bulk load ----------------------------------------------------------------
 # Faster table writes on Redshift; needs extra setup -- see README.md "Optional: bulk load".
@@ -32,31 +40,33 @@ Sys.setenv(DATABASE_CONNECTOR_BULK_UPLOAD = FALSE)
 # Time windows, ARTEMIS filters and strata are fixed for every site and live
 # in R/study_settings.R; don't change them unless the study team asks (see
 # that file for how).
-settings <- list(
-  databaseId          = "",   # short site id, e.g. "HUS"
-  cdmDatabaseSchema   = "",
-  vocabDatabaseSchema = "",    # defaults to cdmDatabaseSchema if blank
-  workDatabaseSchema  = "",    # where cohort + lab + episode tables are written
+if (!exists("settings")) {
+  settings <- list(
+    databaseId          = "",   # short site id, e.g. "HUS"
+    cdmDatabaseSchema   = "",
+    vocabDatabaseSchema = "",    # defaults to cdmDatabaseSchema if blank
+    workDatabaseSchema  = "",    # where cohort + lab + episode tables are written
 
-  # --- Work tables ----------------------------------------------------------
-  # Written to workDatabaseSchema and dropped/recreated on each run. Rename
-  # only if these names clash with tables already in that schema.
-  cohortTable          = "bc_cohort",                  # main cohort tree (JSON + SQL-built cohorts)
-  labCohortTable       = "bc_lab_cohort",              # unified eligibility table (labs + ECOG + conditions)
-  rawLabResultsTable   = "bc_raw_lab_results",         # every normalised lab result, pass or fail
-  covariateCohortTable = "bc_covariate_cohort",        # descriptive covariates (comorbidities); NOT part of the main tree
-  artemisCohortName    = "ARTEMIS bladder cohort",     # cohort name ARTEMIS aligns against
-  episodeTable         = "bc_artemis_episodes",        # ARTEMIS treatment episodes
-  regimenClassTable    = "bc_regimen_classifications", # regimen -> treatment category lookup
+    # --- Work tables ----------------------------------------------------------
+    # Written to workDatabaseSchema and dropped/recreated on each run. Rename
+    # only if these names clash with tables already in that schema.
+    cohortTable          = "bc_cohort",                  # main cohort tree (JSON + SQL-built cohorts)
+    labCohortTable       = "bc_lab_cohort",              # unified eligibility table (labs + ECOG + conditions)
+    rawLabResultsTable   = "bc_raw_lab_results",         # every normalised lab result, pass or fail
+    covariateCohortTable = "bc_covariate_cohort",        # descriptive covariates (comorbidities); NOT part of the main tree
+    artemisCohortName    = "ARTEMIS bladder cohort",     # cohort name ARTEMIS aligns against
+    episodeTable         = "bc_artemis_episodes",        # ARTEMIS treatment episodes
+    regimenClassTable    = "bc_regimen_classifications", # regimen -> treatment category lookup
 
-  minCellCount        = 5L,    # counts below this are censored in every output
-  outputFolder        = file.path("results")
-)
+    minCellCount        = 5L,    # counts below this are censored in every output
+    outputFolder        = file.path("results")
+  )
+}
 
 # --- What to run --------------------------------------------------------------
 # The study only by default. Add "diagnostics" if the study team asks for
 # the pre-study queries; c("diagnostics") alone needs no ARTEMIS set up.
-runParts <- c("study")
+if (!exists("runParts")) runParts <- c("study")
 
 # ===========================================================================
 # Run  —  do not edit below
