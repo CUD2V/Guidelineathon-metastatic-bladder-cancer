@@ -90,9 +90,12 @@ generateCohorts <- function(connection, cohortDefinitionSet, dropTables = TRUE,
                       warnOnMissingParameters = FALSE), character(1))
 
   # BigQuery INTERVAL requires INT but days_supply may be FLOAT64 in the CDM.
+  # Handle both aliased (de.days_supply) and bare (days_supply) references.
   if (.getDbms(connection) == "bigquery") {
     cds$sql <- gsub("de.days_supply", "CAST(de.days_supply AS INT)",
                     cds$sql, fixed = TRUE)
+    cds$sql <- gsub("(?<!\\.)\\bdays_supply\\b", "CAST(days_supply AS INT)",
+                    cds$sql, perl = TRUE)
   }
 
   CohortGenerator::generateCohortSet(
